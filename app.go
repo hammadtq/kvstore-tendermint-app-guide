@@ -3,6 +3,7 @@ package main
 import (
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	badger "github.com/dgraph-io/badger"
+	"bytes"
 )
 
 
@@ -13,7 +14,7 @@ type KVStoreApplication struct {
 
 var _ abcitypes.Application = (*KVStoreApplication)(nil)
 
-func NewKVStoreApplication() *KVStoreApplication {
+func NewKVStoreApplication(db *badger.DB) *KVStoreApplication {
 	return &KVStoreApplication{
 		db: db,
 	}
@@ -27,7 +28,7 @@ func (KVStoreApplication) SetOption(req abcitypes.RequestSetOption) abcitypes.Re
 	return abcitypes.ResponseSetOption{}
 }
 
-func (KVStoreApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
+func (app *KVStoreApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 	code := app.isValid(req.Tx)
 	if code != 0 {
 		return abcitypes.ResponseDeliverTx{Code: code}
@@ -44,17 +45,17 @@ func (KVStoreApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Re
 	return abcitypes.ResponseDeliverTx{Code: 0}
 }
 
-func (KVStoreApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
+func (app *KVStoreApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
 	code := app.isValid(req.Tx)
 	return abcitypes.ResponseCheckTx{Code: code, GasWanted: 1}
 }
 
-func (KVStoreApplication) Commit() abcitypes.ResponseCommit {
+func (app *KVStoreApplication) Commit() abcitypes.ResponseCommit {
 	app.currentBatch.Commit()
 	return abcitypes.ResponseCommit{Data: []byte{}}
 }
 
-func (KVStoreApplication) Query(req abcitypes.RequestQuery) abcitypes.ResponseQuery {
+func (app *KVStoreApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.ResponseQuery) {
 	resQuery.Key = reqQuery.Data
 	err := app.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(reqQuery.Data)
@@ -82,10 +83,11 @@ func (KVStoreApplication) InitChain(req abcitypes.RequestInitChain) abcitypes.Re
 	return abcitypes.ResponseInitChain{}
 }
 
-func (KVStoreApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
+func (app *KVStoreApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
 	app.currentBatch = app.db.NewTransaction(true)
 	return abcitypes.ResponseBeginBlock{}
 }
+
 
 func (KVStoreApplication) EndBlock(req abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
 	return abcitypes.ResponseEndBlock{}
